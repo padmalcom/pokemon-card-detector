@@ -30,7 +30,7 @@ class MainWindow(QMainWindow):
     # init model
     os.environ['KMP_DUPLICATE_LIB_OK']='True'
     self.device = "mps" if torch.backends.mps.is_available() else "cpu"
-    self.model, self.preprocess = clip.load("ViT-B/32", device=device)
+    self.model, self.preprocess = clip.load("ViT-B/32", device=self.device)
     self.index = faiss.read_index("cards.faiss")
     self.labels = np.load("card_labels.npy")
 
@@ -43,6 +43,7 @@ class MainWindow(QMainWindow):
     # init ui
     self.is_fit = False
     self.detect_now = False
+    self.detection_result = None
 
     self.scene = QGraphicsScene()
 
@@ -76,6 +77,8 @@ class MainWindow(QMainWindow):
 
   def mouse_press_event(self, event):
     self.detect_now = not self.detect_now
+    if not self.detect_now:
+      self.detection_result = None
 
   def update_frame(self):
     frame = self.picam2.capture_array()
@@ -83,17 +86,34 @@ class MainWindow(QMainWindow):
     h, w, ch = frame.shape
     bytes_per_line = ch * w
 
-    qimg = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+    #qimg = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
 
+    if self.detect_now == True:
+      emb = self.embed_frame(frame)
+      dist, idx = self.index.search(emb, 1)
+      if dist[0][0] < 0.3:
+        card_name = labels[idx[0][0]][:-4]
+        if card_name in cards:
+          card = cards[card_name]
+          card_name = card["name"]
+          card_rarity = card["rarity"]
+          card_price = card["price"]
+          self.detection_result = [f"{card_name} ({dist[0][0]:.4f})", f"Seltenheit: {card_rarity}", f"Wert: {card_price}€"]
+      else:
+        self.detection_result = ["Nichts gefunden"]
+
+    if self.detection_result is not None:
+      print("Result is: ", self.detection_result)
+      for idx, s in enumerate(self.detection_result):
+        frame = self.draw_on_frame(frame, s, idx)
+
+    qimg = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
     pixmap = QPixmap.fromImage(qimg)
     self.pixmap_item.setPixmap(pixmap)
 
     if self.is_fit == False:
       self.fit_pixmap()
       self.is_fit = True
-
-    if self.detect_now == True:
-      emb = self.embed_frame(frame)
 
   def fit_pixmap(self):
     if not self.pixmap_item.pixmap().isNull():
@@ -102,9 +122,9 @@ class MainWindow(QMainWindow):
   def embed_frame(self, img_bgr):
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     pil = Image.fromarray(img_rgb)
-    img_input = preprocess(pil).unsqueeze(0).to(device)
+    img_input = self.preprocess(pil).unsqueeze(0).to(self.device)
     with torch.no_grad():
-      emb = model.encode_image(img_input)
+      emb = self.model.encode_image(img_input)
       emb = emb / emb.norm(dim=-1, keepdim=True)
     return emb.cpu().numpy().astype("float32")
 
