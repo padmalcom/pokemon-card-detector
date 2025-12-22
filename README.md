@@ -13,3 +13,8 @@ A simple python app that classifies pokemon cards in real-time. Pokemon data is 
 - Call create_faiss_index.py to create the FAISS index
 - You can now delete the data folder
 
+## Install on raspberry pi
+- sudo apt install python3-picamera2
+- python3 -m venv pokemon --system-site-packages
+- source pokemon/bin/activate
+- pip install git+https://github.com/openai/CLIP.git
