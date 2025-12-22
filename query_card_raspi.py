@@ -2,8 +2,8 @@ import sys
 import signal
 from picamera2 import Picamera2
 
-from PyQt6.QtGui import QImage, QPixmap
-from PyQt6.QtCore import QTimer
+from PyQt6.QtGui import QImage, QPainter, QColor, QBrush, QPixmap, QGuiApplication
+from PyQt6.QtCore import QTimer, Qt, QRectF
 
 from PyQt6.QtWidgets import (
   QApplication, QMainWindow, QGraphicsView,
@@ -16,21 +16,26 @@ signal.signal(signal.SIGINT, signal.SIG_DFL)
 class MainWindow(QMainWindow):
   def __init__(self):
     super().__init__()
+    self.is_fit = False
 
-    scene = QGraphicsScene()
-    #scene.addText("Hello QGraphicsView!")
+    self.scene = QGraphicsScene()
 
     self.pixmap_item = QGraphicsPixmapItem()
-    scene.addItem(self.pixmap_item)
+    self.scene.addItem(self.pixmap_item)
 
-    view = QGraphicsView(scene)
+    screen = QGuiApplication.primaryScreen()
+    geometry = screen.geometry()
+    self.setGeometry(geometry)
 
-    central_widget = QWidget()
-    layout = QVBoxLayout(central_widget)
-    layout.addWidget(view)
+    self.view = QGraphicsView(self.scene)
+    self.view.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    self.view.setBackgroundBrush(QBrush(QColor("black")))
+    self.view.setViewportUpdateMode(
+      QGraphicsView.ViewportUpdateMode.MinimalViewportUpdate
+    )
+    self.view.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
-    self.setCentralWidget(central_widget)
-
+    self.setCentralWidget(self.view)
     self.picam2 = Picamera2()
     config = self.picam2.create_preview_configuration(
       main={"format": "RGB888", "size": (640, 480)}
@@ -40,7 +45,7 @@ class MainWindow(QMainWindow):
 
     self.timer = QTimer()
     self.timer.timeout.connect(self.update_frame)
-    self.timer.start(30)  # ~33 FPS
+    self.timer.start(30)
 
   def update_frame(self):
     frame = self.picam2.capture_array()
@@ -52,9 +57,13 @@ class MainWindow(QMainWindow):
 
     pixmap = QPixmap.fromImage(qimg)
     self.pixmap_item.setPixmap(pixmap)
+    if self.is_fit == False:
+      self.fit_pixmap()
+      self.is_fit = True
 
-    # Optional: auto-fit view
-    #self.fitInView(self.pixmap_item, mode=1)
+  def fit_pixmap(self):
+    if not self.pixmap_item.pixmap().isNull():
+      self.view.fitInView(self.pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
 
 if __name__ == "__main__":
   app = QApplication(sys.argv)
