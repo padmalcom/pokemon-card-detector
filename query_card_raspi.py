@@ -36,8 +36,9 @@ class MainWindow(QMainWindow):
 
     # load cards
     with open("cards.json", "r", encoding="utf-8") as f:
-      cards = json.load(f)
-    if cards is None:
+      self.cards = json.load(f)
+
+    if self.cards is None:
       raise("Could not read cards.")
 
     # init ui
@@ -76,31 +77,38 @@ class MainWindow(QMainWindow):
     self.timer.start(30)
 
   def mouse_press_event(self, event):
-    self.detect_now = not self.detect_now
-    if not self.detect_now:
+    if self.detection_result is not None:
       self.detection_result = None
+      self.detect_now = False
+    else:
+      self.detect_now = True
 
   def update_frame(self):
     frame = self.picam2.capture_array()
+    frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 
     h, w, ch = frame.shape
     bytes_per_line = ch * w
 
     #qimg = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-
     if self.detect_now == True:
+      print("detecting...")
       emb = self.embed_frame(frame)
       dist, idx = self.index.search(emb, 1)
-      if dist[0][0] < 0.3:
-        card_name = labels[idx[0][0]][:-4]
-        if card_name in cards:
-          card = cards[card_name]
+      print("Dist:", dist[0][0])
+      if dist[0][0] < 0.4:
+        card_name = self.labels[idx[0][0]][:-4]
+        print("Detected card:", card_name)
+        if card_name in self.cards:
+          card = self.cards[card_name]
           card_name = card["name"]
           card_rarity = card["rarity"]
           card_price = card["price"]
           self.detection_result = [f"{card_name} ({dist[0][0]:.4f})", f"Seltenheit: {card_rarity}", f"Wert: {card_price}€"]
       else:
+        pass
         self.detection_result = ["Nichts gefunden"]
+      self.detect_now = False
 
     if self.detection_result is not None:
       print("Result is: ", self.detection_result)
