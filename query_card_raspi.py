@@ -21,6 +21,8 @@ import os
 import json
 from PIL import Image, ImageDraw, ImageFont
 
+from huggingface_hub import from_pretrained_fastai
+
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 class MainWindow(QMainWindow):
@@ -34,6 +36,9 @@ class MainWindow(QMainWindow):
     self.index = faiss.read_index("cards.faiss")
     self.labels = np.load("card_labels.npy")
 
+    # init fake detector model
+    self.fake_detector = from_pretrained_fastai('hugginglearners/pokemon-card-checker')
+
     # load cards
     with open("cards.json", "r", encoding="utf-8") as f:
       self.cards = json.load(f)
@@ -43,7 +48,8 @@ class MainWindow(QMainWindow):
 
     # init ui
     self.is_fit = False
-    self.detect_now = False
+    self.detect_card_now = False
+    self.detect_fake_now = False
     self.detection_result = None
 
     self.scene = QGraphicsScene()
@@ -77,11 +83,16 @@ class MainWindow(QMainWindow):
     self.timer.start(30)
 
   def mouse_press_event(self, event):
+    print("Event:", event)
     if self.detection_result is not None:
       self.detection_result = None
-      self.detect_now = False
+      self.detect_card_now = False
+      self.detect_fake_now = False
     else:
-      self.detect_now = True
+      if event.localPos.x > 400:
+        self.detect_fake_now = True
+      else:
+        self.detect_card_now = True
 
   def update_frame(self):
     frame = self.picam2.capture_array()
@@ -91,7 +102,7 @@ class MainWindow(QMainWindow):
     bytes_per_line = ch * w
 
     #qimg = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-    if self.detect_now == True:
+    if self.detect_card_now == True:
       print("detecting...")
       emb = self.embed_frame(frame)
       dist, idx = self.index.search(emb, 1)
@@ -109,6 +120,16 @@ class MainWindow(QMainWindow):
         pass
         self.detection_result = ["Nichts gefunden"]
       self.detect_now = False
+
+    if self.detect_fake_now == True:
+      pred_label, _, scores = self.fake_detector.predict(frame)
+      scores = scores.detach().numpy()
+      scores = {'real': float(scores[1]), 'fake': float(scores[0])}
+
+      if scores[1] > scores[0]:
+        self.detection_result = ["Echt!"]
+      else:
+        self.detection_result = ["Fake!"]
 
     if self.detection_result is not None:
       print("Result is: ", self.detection_result)
