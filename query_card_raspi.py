@@ -83,13 +83,13 @@ class MainWindow(QMainWindow):
     self.timer.start(30)
 
   def mouse_press_event(self, event):
-    print("Event:", event)
+    print("Click:", event.pos().x(), event.pos().y())
     if self.detection_result is not None:
       self.detection_result = None
       self.detect_card_now = False
       self.detect_fake_now = False
     else:
-      if event.localPos.x > 400:
+      if event.pos().x() > 400:
         self.detect_fake_now = True
       else:
         self.detect_card_now = True
@@ -119,17 +119,19 @@ class MainWindow(QMainWindow):
       else:
         pass
         self.detection_result = ["Nichts gefunden"]
-      self.detect_now = False
+      self.detect_card_now = False
 
     if self.detect_fake_now == True:
       pred_label, _, scores = self.fake_detector.predict(frame)
       scores = scores.detach().numpy()
-      scores = {'real': float(scores[1]), 'fake': float(scores[0])}
+      print("Scores:", scores)
+      #scores = {'real': float(scores[1]), 'fake': float(scores[0])}
 
-      if scores[1] > scores[0]:
+      if float(scores[1]) > float(scores[0]):
         self.detection_result = ["Echt!"]
       else:
         self.detection_result = ["Fake!"]
+      self.detect_fake_now = False
 
     if self.detection_result is not None:
       print("Result is: ", self.detection_result)
