@@ -83,16 +83,45 @@ class MainWindow(QMainWindow):
     self.timer.start(30)
 
   def mouse_press_event(self, event):
-    print("Click:", event.pos().x(), event.pos().y())
+    print("Pos:", event.pos().x(), event.pos().y())
     if self.detection_result is not None:
       self.detection_result = None
       self.detect_card_now = False
       self.detect_fake_now = False
     else:
-      if event.pos().x() > 400:
+      if event.pos().x() > 250:
         self.detect_fake_now = True
       else:
         self.detect_card_now = True
+
+  def fit_text(
+    self,
+    draw,
+    text,
+    font_path,
+    box_width,
+    box_height,
+    min_size=8,
+    max_size=200,
+    spacing=6
+  ):
+    best_font = None
+
+    while min_size <= max_size:
+      mid = (min_size + max_size) // 2
+      font = ImageFont.truetype(font_path, mid)
+
+      bbox = draw.multiline_textbbox((0, 0), text, font=font, spacing=spacing)
+      w = bbox[2] - bbox[0]
+      h = bbox[3] - bbox[1]
+
+      if w <= box_width and h <= box_height:
+        best_font = font
+        min_size = mid + 1   # try bigger
+      else:
+        max_size = mid - 1   # too big
+
+    return best_font
 
   def update_frame(self):
     frame = self.picam2.capture_array()
@@ -101,13 +130,12 @@ class MainWindow(QMainWindow):
     h, w, ch = frame.shape
     bytes_per_line = ch * w
 
-    #qimg = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
     if self.detect_card_now == True:
       print("detecting...")
       emb = self.embed_frame(frame)
       dist, idx = self.index.search(emb, 1)
       print("Dist:", dist[0][0])
-      if dist[0][0] < 0.4:
+      if dist[0][0] < 0.33:
         card_name = self.labels[idx[0][0]][:-4]
         print("Detected card:", card_name)
         if card_name in self.cards:
@@ -115,7 +143,7 @@ class MainWindow(QMainWindow):
           card_name = card["name"]
           card_rarity = card["rarity"]
           card_price = card["price"]
-          self.detection_result = [f"{card_name} ({dist[0][0]:.4f})", f"Seltenheit: {card_rarity}", f"Wert: {card_price}€"]
+          self.detection_result = [f"{card_name}\n{card_rarity}\n{card_price}"]
       else:
         pass
         self.detection_result = ["Nichts gefunden"]
@@ -125,7 +153,6 @@ class MainWindow(QMainWindow):
       pred_label, _, scores = self.fake_detector.predict(frame)
       scores = scores.detach().numpy()
       print("Scores:", scores)
-      #scores = {'real': float(scores[1]), 'fake': float(scores[0])}
 
       if float(scores[1]) > float(scores[0]):
         self.detection_result = ["Echt!"]
@@ -162,8 +189,13 @@ class MainWindow(QMainWindow):
   def draw_on_frame(self, frame, text, line=0):
     pil_img = Image.fromarray(frame)
     draw = ImageDraw.Draw(pil_img)
-    font = ImageFont.truetype("Times New Roman.ttf", 40)
-    draw.text((50, (line+1)*50), text, font=font, fill=(0, 0, 0))
+
+    # calculate text width
+    #font = ImageFont.truetype("Times New Roman.ttf", 80)
+    font_name = "Times New Roman.ttf"
+    font = self.fit_text(draw, text, font_name, box_width=pil_img.width - 20, box_height=pil_img.height)
+
+    draw.multiline_text((pil_img.width // 2, pil_img.height // 2), text, font=font, fill="white", stroke_width=8, stroke_fill="black", anchor="mm", align="center")
     return np.array(pil_img)
 
 if __name__ == "__main__":
