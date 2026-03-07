@@ -14,6 +14,7 @@ A simple python app that classifies pokemon cards in real-time. Pokemon data is 
 - You can now delete the data folder
 
 ## Install on raspberry pi
+- export DISPLAY=:0.0
 - sudo apt install python3-picamera2
 - python3 -m venv pokemon --system-site-packages
 - source pokemon/bin/activate

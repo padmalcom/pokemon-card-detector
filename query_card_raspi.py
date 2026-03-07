@@ -125,7 +125,7 @@ class MainWindow(QMainWindow):
 
   def update_frame(self):
     frame = self.picam2.capture_array()
-    frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    #frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 
     h, w, ch = frame.shape
     bytes_per_line = ch * w
