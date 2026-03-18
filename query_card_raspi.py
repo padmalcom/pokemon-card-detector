@@ -11,6 +11,8 @@ from PyQt6.QtWidgets import (
   QGraphicsPixmapItem
 )
 
+from gpiozero import Button
+
 import cv2
 import torch
 import clip
@@ -33,8 +35,8 @@ class MainWindow(QMainWindow):
     os.environ['KMP_DUPLICATE_LIB_OK']='True'
     self.device = "mps" if torch.backends.mps.is_available() else "cpu"
     self.model, self.preprocess = clip.load("ViT-B/32", device=self.device)
-    self.index = faiss.read_index("cards.faiss")
-    self.labels = np.load("card_labels.npy")
+    self.index = faiss.read_index("./cards.faiss")
+    self.labels = np.load("./card_labels.npy")
 
     # init fake detector model
     self.fake_detector = from_pretrained_fastai('hugginglearners/pokemon-card-checker')
@@ -47,6 +49,7 @@ class MainWindow(QMainWindow):
       raise("Could not read cards.")
 
     # init ui
+    self.alpha = 0.5
     self.is_fit = False
     self.detect_card_now = False
     self.detect_fake_now = False
@@ -68,7 +71,12 @@ class MainWindow(QMainWindow):
       QGraphicsView.ViewportUpdateMode.MinimalViewportUpdate
     )
     self.view.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-    self.view.mousePressEvent = self.mouse_press_event
+    #self.view.mousePressEvent = self.mouse_press_event
+
+    self.btn_fake = Button(16, pull_up=True)
+    self.btn_detect = Button(26, pull_up=True)
+    self.btn_fake.when_released = self.btn_fake_release
+    self.btn_detect.when_released = self.btn_detect_release
 
     self.setCentralWidget(self.view)
     self.picam2 = Picamera2()
@@ -81,6 +89,23 @@ class MainWindow(QMainWindow):
     self.timer = QTimer()
     self.timer.timeout.connect(self.update_frame)
     self.timer.start(30)
+
+  def btn_fake_release(self):
+    if self.detection_result is not None:
+      self.detection_result = None
+      self.detect_card_now = False
+      self.detect_fake_now = False
+    else:
+      self.detect_fake_now = True
+
+  def btn_detect_release(self):
+    if self.detection_result is not None:
+      self.detection_result = None
+      self.detect_card_now = False
+      self.detect_fake_now = False
+    else:
+      self.detect_card_now = True
+
 
   def mouse_press_event(self, event):
     print("Pos:", event.pos().x(), event.pos().y())
@@ -125,14 +150,41 @@ class MainWindow(QMainWindow):
 
   def update_frame(self):
     frame = self.picam2.capture_array()
-    #frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+
+    #h, w, ch = frame.shape
+    #third = w // 3
+
+    #overlay = frame.copy()
+    #cv2.rectangle(overlay, (0, 0), (third, h), (128, 128, 128), -1)
+    #cv2.rectangle(overlay, (2*third, 0), (w, h), (128, 128, 128), -1)
+    #frame = cv2.addWeighted(overlay, self.alpha, frame, 1 - self.alpha, 0)
+
+    #center_frame = frame[:, third:2*third]
+    #c_h, c_w, c_ch = center_frame.shape
 
     h, w, ch = frame.shape
+
+    # Calculate center crop dimensions
+    crop_w = int(h * 0.72)
+    x_start = (w - crop_w) // 2
+    x_end = x_start + crop_w
+
+    # Extract center region (copy so it's independent)
+    center_frame = frame[0:h, x_start:x_end].copy()
+
+    # Apply translucent grey overlay to the border regions
+    overlay = frame.copy()
+    grey = [128] * ch
+    overlay[:, :x_start] = grey
+    overlay[:, x_end:] = grey
+    frame = cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
+
+
     bytes_per_line = ch * w
 
     if self.detect_card_now == True:
       print("detecting...")
-      emb = self.embed_frame(frame)
+      emb = self.embed_frame(center_frame)
       dist, idx = self.index.search(emb, 1)
       print("Dist:", dist[0][0])
       if dist[0][0] < 0.33:
@@ -166,12 +218,13 @@ class MainWindow(QMainWindow):
         frame = self.draw_on_frame(frame, s, idx)
 
     qimg = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+    #qimg = QImage(center_frame.data, c_w, c_h, bytes_per_line, QImage.Format.Format_RGB888)
     pixmap = QPixmap.fromImage(qimg)
     self.pixmap_item.setPixmap(pixmap)
 
-    if self.is_fit == False:
-      self.fit_pixmap()
-      self.is_fit = True
+    #if self.is_fit == False:
+    self.fit_pixmap()
+    #  self.is_fit = True
 
   def fit_pixmap(self):
     if not self.pixmap_item.pixmap().isNull():
