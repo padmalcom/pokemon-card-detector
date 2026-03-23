@@ -2,6 +2,8 @@
 A simple python app that classifies pokemon cards in real-time. Pokemon data is loaded via tcgdexsdk (thanks for hosting!).
 It furthermore provides a model to check if a card is a fake copy or not - based on the card's back site.
 
+![sample image](sample.jpg)
+
 ## Quick start
 - call pip install -r requirements.txt
 - call query_card_webcam.py to classify cards in real-time via your webcam (card must fill the rectangle in the middle)
